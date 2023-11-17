@@ -3,33 +3,43 @@ mod cpu_8;
 
 use cpu_8::{C8Cpu, DISPLAY_HEIGHT, DISPLAY_WIDTH};
 use macroquad::prelude::*;
-use std::fs;
+use std::fs::{self, DirEntry};
 
 const DISPLAY_SCALE: u32 = 20;
 
-// fn main() {
-//     // let rom = fs::read("roms/ibm_logo.ch8").expect("Unable to read file");
-//     let rom = fs::read("roms/test_opcode.ch8").expect("Unable to read file");
-//     println!("rom size: {}b", rom.len());
-
-//     let mut cpu = C8Cpu::new();
-//     // println!("{}", cpu);
-
-//     cpu.load_rom(rom);
-
-//     while cpu.is_running() {
-//         cpu.single_cycle();
-
-//         if cpu.draw_flag {
-//             cpu.draw_flag = false;
-//             cpu.print_display();
-//         }
-//     }
-// }
+fn get_extention(entry: &DirEntry) -> Option<String> {
+    let path = entry.path();
+    let ext = path.extension()?.to_str()?.to_owned();
+    Some(ext)
+}
 
 #[macroquad::main("Chip-8")]
 async fn main() {
-    let rom = fs::read("roms/ibm_logo.ch8").expect("Unable to read file");
+    let rom_path = match std::env::args().nth(1) {
+        Some(path) => path,
+        None => {
+            println!("Please provide a rom path");
+            if let Ok(roms) = fs::read_dir("./roms") {
+                let mut found = false;
+                for rom in roms {
+                    if let Ok(rom) = rom {
+                        if let Some(ext) = get_extention(&rom) {
+                            if ext == "ch8" {
+                                if !found {
+                                    found = true;
+                                    println!("Possible roms:");
+                                }
+                                println!("{}", rom.path().display().to_string().replace("\\", "/"));
+                            }
+                        }
+                    }
+                }
+            }
+            std::process::exit(1);
+        }
+    };
+    let rom = fs::read(rom_path).expect("Unable to read file");
+    // let rom = fs::read("roms/ibm_logo.ch8").expect("Unable to read file");
     // let rom = fs::read("roms/test_opcode.ch8").expect("Unable to read file");
     // let rom = fs::read("roms/chip8-logo.ch8").expect("Unable to read file");
     // let rom = fs::read("roms/3-corax+.ch8").expect("Unable to read file");
