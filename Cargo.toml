@@ -2,8 +2,13 @@
 name = "rs_chip_8"
 version = "0.1.0"
 edition = "2021"
+default-run = "chip8"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[[bin]]
+name = "chip8"
+path = "src/main.rs"
 
 [dependencies]
 rand = "0.8.5"
