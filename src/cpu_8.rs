@@ -1,3 +1,4 @@
+use rand::{rngs::ThreadRng, thread_rng, Rng};
 use std::fmt;
 
 macro_rules! invalid_opcode {
@@ -17,10 +18,11 @@ const MEM_SIZE: usize = 4096;
 const MEM_START: u16 = 0x200;
 const REG_COUNT: usize = 16;
 const STACK_SIZE: usize = 16;
-const DISPLAY_WIDTH: usize = 64;
-const DISPLAY_HEIGHT: usize = 32;
+pub const DISPLAY_WIDTH: usize = 64;
+pub const DISPLAY_HEIGHT: usize = 32;
 const INSTRUCTION_SIZE: u16 = 2;
 const REFRESH_RATE: u16 = 60;
+const MSB_8BIT: u8 = 0x80;
 
 const FONTSET_SIZE: usize = 80;
 const FONTSET_START_ADDRESS: usize = 0x050;
@@ -40,23 +42,49 @@ const FONTSET: [u8; FONTSET_SIZE] = [
     0xF0, 0x80, 0x80, 0x80, 0xF0, // C
     0xE0, 0x90, 0x90, 0x90, 0xE0, // D
     0xF0, 0x80, 0xF0, 0x80, 0xF0, // E
-    0xF0, 0x80, 0xF0, 0x80, 0x80  // F
+    0xF0, 0x80, 0xF0, 0x80, 0x80, // F
 ];
 
 // CHIP-8 CPU
 pub struct C8Cpu {
-    memory: [u8; MEM_SIZE],                             // 4K memory
-    v: [u8; REG_COUNT],                                 // 16 8-bit general purpose (variable) registers
-    stack: [u16; STACK_SIZE],                           // 16-level stack
-    display: [bool; DISPLAY_WIDTH * DISPLAY_HEIGHT],    // 64x32 monochrome display
-    pc: u16,                                            // program counter
-    i: u16,                                             // 16-bit index register (stores memory addresses) -- only first 12-bit are used
-    dt: u8,                                             // delay timer
-    st: u8,                                             // sound timer 
-    keypad: u16,                                        // 16-key hexadecimal keypad
-    
-    pub draw_flag: bool,                                // draw flag (set to true when a draw instruction is executed)
-    running: bool,                                      // running flag (set to false when the program is finished)
+    /// 4K memory
+    memory: [u8; MEM_SIZE],
+
+    /// 16 8-bit general purpose (variable) registers
+    v: [u8; REG_COUNT],
+
+    /// 16-level stack
+    stack: [u16; STACK_SIZE],
+
+    /// 64x32 monochrome display
+    display: [bool; DISPLAY_WIDTH * DISPLAY_HEIGHT],
+
+    /// program counter
+    pc: u16,
+
+    /// stack pointer
+    sp: u16,
+
+    /// 16-bit index register (stores memory addresses) -- only first 12-bit are used
+    i: u16,
+
+    /// delay timer
+    dt: u8,
+
+    /// sound timer
+    st: u8,
+
+    /// 16-key hexadecimal keypad
+    keypad: u16,
+
+    /// draw flag (set to true when a draw instruction is executed)
+    pub draw_flag: bool,
+
+    /// running flag (set to false when the program is finished)
+    running: bool,
+
+    /// the random number generator
+    rng: ThreadRng,
 }
 
 impl C8Cpu {
@@ -80,12 +108,14 @@ impl C8Cpu {
             stack: [0; STACK_SIZE],
             display: [false; DISPLAY_WIDTH * DISPLAY_HEIGHT],
             pc: MEM_START, // skip first 512 bytes of memory (traditionally reserved for interpreter)
+            sp: 0,
             i: 0,
             dt: 0,
             st: 0,
             keypad: 0,
             draw_flag: false,
             running: true,
+            rng: thread_rng(),
         };
 
         // load fontset into memory
@@ -128,13 +158,27 @@ impl C8Cpu {
         for i in 0..DISPLAY_HEIGHT {
             for j in 0..DISPLAY_WIDTH {
                 if self.display[i * DISPLAY_WIDTH + j] {
-                    print!("#");
+                    // print!("#");
+                    print!("█");
                 } else {
                     print!(" ");
                 }
             }
             println!();
         }
+    }
+
+    pub fn print_memory(&self) {
+        for i in 0..MEM_SIZE {
+            print!("0x{:X} ", self.memory[i]);
+            if i % 16 == 15 {
+                println!();
+            }
+        }
+    }
+
+    pub fn get_display(&self) -> &[bool; DISPLAY_WIDTH * DISPLAY_HEIGHT] {
+        &self.display
     }
 
     // PRIVATE METHODS
@@ -182,37 +226,46 @@ impl C8Cpu {
                 }
                 0x00ee => {
                     // RET
-                    unimplemented_opcode!(opcode);
+                    self.pc = self.stack[self.sp as usize];
+                    self.sp -= 1;
                 }
                 _ => {
                     invalid_opcode!(opcode);
                 }
-            }
+            },
             0x1 => {
                 // JP nnn
                 self.pc = nnn;
             }
             0x2 => {
                 // CALL nnn
-                unimplemented_opcode!(opcode);
+                self.sp += 1;
+                self.stack[self.sp as usize] = self.pc;
+                self.pc = nnn;
             }
             0x3 => {
                 // SE Vx, nn
-                unimplemented_opcode!(opcode);
+                if self.v[x] == nn {
+                    self.inc_pc();
+                }
             }
             0x4 => {
                 // SNE Vx, nn
-                unimplemented_opcode!(opcode);
+                if self.v[x] != nn {
+                    self.inc_pc();
+                }
             }
             0x5 => match n {
                 0 => {
                     // SE Vx, Vy
-                    unimplemented_opcode!(opcode);
+                    if self.v[x] == self.v[y] {
+                        self.inc_pc();
+                    }
                 }
                 _ => {
                     invalid_opcode!(opcode);
                 }
-            }
+            },
             0x6 => {
                 // LD Vx, nn
                 self.v[x] = nn;
@@ -224,64 +277,74 @@ impl C8Cpu {
             0x8 => match n {
                 0x0 => {
                     // LD Vx, Vy
-                    unimplemented_opcode!(opcode);
+                    self.v[x] = self.v[y];
                 }
                 0x1 => {
                     // OR Vx, Vy
-                    unimplemented_opcode!(opcode);
+                    self.v[x] |= self.v[y];
                 }
                 0x2 => {
                     // AND Vx, Vy
-                    unimplemented_opcode!(opcode);
+                    self.v[x] &= self.v[y];
                 }
                 0x3 => {
                     // XOR Vx, Vy
-                    unimplemented_opcode!(opcode);
+                    self.v[x] ^= self.v[y];
                 }
                 0x4 => {
                     // ADD Vx, Vy
-                    unimplemented_opcode!(opcode);
+                    let (result, overflow) = self.v[x].overflowing_add(self.v[y]);
+                    self.v[x] = result;
+                    self.v[0xf] = overflow as u8;
                 }
                 0x5 => {
                     // SUB Vx, Vy
-                    unimplemented_opcode!(opcode);
+                    let (result, overflow) = self.v[x].overflowing_sub(self.v[y]);
+                    self.v[x] = result;
+                    self.v[0xf] = !overflow as u8;
                 }
                 0x6 => {
                     // SHR Vx {, Vy}
-                    unimplemented_opcode!(opcode);
+                    self.v[0xf] = self.v[x] & 0x1;
+                    self.v[x] >>= 1; // divide by 2 (shift right)
                 }
                 0x7 => {
                     // SUBN Vx, Vy
-                    unimplemented_opcode!(opcode);
+                    let (result, overflow) = self.v[y].overflowing_sub(self.v[x]);
+                    self.v[x] = result;
+                    self.v[0xf] = !overflow as u8;
                 }
                 0xe => {
                     // SHL Vx {, Vy}
-                    unimplemented_opcode!(opcode);
+                    self.v[0xf] = (self.v[x] & MSB_8BIT) >> 7;
+                    self.v[x] <<= 1; // multiply by 2 (shift left)
                 }
                 _ => {
                     invalid_opcode!(opcode);
                 }
-            }
+            },
             0x9 => match n {
                 0 => {
                     // SNE Vx, Vy
-                    unimplemented_opcode!(opcode);
+                    if self.v[x] != self.v[y] {
+                        self.inc_pc();
+                    }
                 }
                 _ => {
                     invalid_opcode!(opcode);
                 }
-            }
+            },
             0xa => {
                 // LD I, nnn
                 self.i = nnn;
             }
             0xb => {
                 // JP V0, nnn
-                unimplemented_opcode!(opcode);
+                self.pc = nnn + self.v[0] as u16;
             }
             0xc => {
                 // RND Vx, nn
-                unimplemented_opcode!(opcode);
+                self.v[x] = self.rng.gen::<u8>() & nn;
             }
             0xd => {
                 // DRW Vx, Vy, n
@@ -309,20 +372,24 @@ impl C8Cpu {
             0xe => match nn {
                 0x9e => {
                     // SKP Vx
-                    unimplemented_opcode!(opcode);
+                    if self.keypad & (1 << self.v[x]) != 0 {
+                        self.inc_pc();
+                    }
                 }
                 0xa1 => {
                     // SKNP Vx
-                    unimplemented_opcode!(opcode);
+                    if self.keypad & (1 << self.v[x]) == 0 {
+                        self.inc_pc();
+                    }
                 }
                 _ => {
                     invalid_opcode!(opcode);
                 }
-            }
+            },
             0xf => match nn {
                 0x07 => {
                     // LD Vx, DT
-                    unimplemented_opcode!(opcode);
+                    self.v[x] = self.dt;
                 }
                 0x0a => {
                     // LD Vx, K
@@ -330,36 +397,45 @@ impl C8Cpu {
                 }
                 0x15 => {
                     // LD DT, Vx
-                    unimplemented_opcode!(opcode);
+                    self.dt = self.v[x];
                 }
                 0x18 => {
                     // LD ST, Vx
-                    unimplemented_opcode!(opcode);
+                    self.st = self.v[x];
                 }
                 0x1e => {
                     // ADD I, Vx
-                    unimplemented_opcode!(opcode);
+                    (self.i, _) = self.i.overflowing_add(self.v[x] as u16);
                 }
                 0x29 => {
                     // LD F, Vx
-                    unimplemented_opcode!(opcode);
+                    self.i = self.v[x] as u16 * 5; // 5 bytes per character starting at 0x000 (see FONTSET)
                 }
                 0x33 => {
                     // LD B, Vx
-                    unimplemented_opcode!(opcode);
+                    let hundreds = self.v[x] / 100;
+                    let tens = (self.v[x] / 10) % 10;
+                    let ones = self.v[x] % 10;
+                    self.memory[self.i as usize] = hundreds;
+                    self.memory[self.i as usize + 1] = tens;
+                    self.memory[self.i as usize + 2] = ones;
                 }
                 0x55 => {
                     // LD [I], Vx
-                    unimplemented_opcode!(opcode);
+                    for i in 0..=x {
+                        self.memory[self.i as usize + i] = self.v[i];
+                    }
                 }
                 0x65 => {
                     // LD Vx, [I]
-                    unimplemented_opcode!(opcode);
+                    for i in 0..=x {
+                        self.v[i] = self.memory[self.i as usize + i];
+                    }
                 }
                 _ => {
                     invalid_opcode!(opcode);
                 }
-            }
+            },
             _ => {
                 invalid_opcode!(opcode);
             }
@@ -411,4 +487,3 @@ fn __get_nibble(value: u16, index: u8) -> u8 {
 
     ((value >> (4 * (3 - index))) & 0x000f) as u8
 }
-
