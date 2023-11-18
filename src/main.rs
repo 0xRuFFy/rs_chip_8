@@ -39,18 +39,6 @@ async fn main() {
         }
     };
     let rom = fs::read(rom_path).expect("Unable to read file");
-    // let rom = fs::read("roms/ibm_logo.ch8").expect("Unable to read file");
-    // let rom = fs::read("roms/test_opcode.ch8").expect("Unable to read file");
-    // let rom = fs::read("roms/chip8-logo.ch8").expect("Unable to read file");
-    // let rom = fs::read("roms/3-corax+.ch8").expect("Unable to read file");
-    // let rom = fs::read("roms/4-flags.ch8").expect("Unable to read file");
-    // let rom = fs::read("roms/5-quirks.ch8").expect("Unable to read file");
-    // let rom = fs::read("roms/fishie.ch8").expect("Unable to read file");
-    // let rom = fs::read("roms/maze.ch8").expect("Unable to read file");
-    // let rom = fs::read("roms/particle.ch8").expect("Unable to read file");
-    // let rom = fs::read("roms/zero.ch8").expect("Unable to read file");
-    // let rom = fs::read("roms/trip8.ch8").expect("Unable to read file");
-    // let rom = fs::read("roms/sierpinski.ch8").expect("Unable to read file");
     println!("rom size: {}b", rom.len());
 
     let mut cpu = C8Cpu::new();
