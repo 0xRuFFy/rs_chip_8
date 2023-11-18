@@ -43,9 +43,9 @@ Provide instructions on how to set up and run your emulator.
 ### Installation
 
 1. Clone the repository:
-  ```bash
-  git clone https://github.com/your-username/chip8-emulator-rust.git
-  ```
+    ```bash
+    git clone https://github.com/your-username/chip8-emulator-rust.git
+    ```
 2. Navigate to the project directory:
    ```bash
    cd .../rs_chip_8
