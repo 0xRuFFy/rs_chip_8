@@ -1,5 +1,3 @@
-# rs_chip_8
-Chip-8 interpreter writen in rust
 
 # CHIP-8 Emulator in Rust
 
@@ -15,7 +13,6 @@ A CHIP-8 emulator written in Rust.
   - [Prerequisites](#prerequisites)
   - [Installation](#installation)
   - [Usage](#usage)
-- [Project Structure](#project-structure)
 - [Contributing](#contributing)
 - [License](#license)
 - [Author](#author)
